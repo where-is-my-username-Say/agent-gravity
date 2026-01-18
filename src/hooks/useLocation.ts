@@ -31,36 +31,40 @@ export const useLocation = () => {
 
         const fetchIpLocation = async () => {
             try {
-                // Try to get a rough location so at least we have something
-                const response = await fetch('https://ipapi.co/json/');
+                // Use HTTP compatible service when on HTTP to avoid Mixed Content errors
+                const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+                const apiUrl = protocol === 'https:'
+                    ? 'https://ipapi.co/json/'
+                    : 'http://ip-api.com/json';
+
+                const response = await fetch(apiUrl);
                 const data = await response.json();
-                if (data.latitude && data.longitude) {
-                    handlePositionSuccess(data.latitude, data.longitude, 'NETWORK_ESTIMATE');
+
+                // Handle different response formats
+                const lat = data.latitude || data.lat;
+                const lon = data.longitude || data.lon;
+
+                if (lat && lon) {
+                    handlePositionSuccess(lat, lon, 'NETWORK_ESTIMATE');
                 } else {
                     throw new Error('IP Fallback Failed');
                 }
             } catch (e) {
-                // If even the IP fallback fails, show the professional security notice
                 setError(i18n.t('gps_error_secure'));
                 setLoading(false);
             }
         };
 
-        // Check for Secure Context (Required for GPS)
         const isSecure = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost';
 
         if (!isSecure) {
-            console.warn('Insecure Origin: Browser blocks GPS hardware.');
-            // On insecure origins, we immediately show the specialized error message
-            setError(i18n.t('gps_error_secure'));
-            // Still try the background IP fallback so they don't have to type everything
+            console.log('Detected insecure context: Using HTTP-friendly Network Fallback.');
             fetchIpLocation();
             return;
         }
 
         if (!navigator.geolocation) {
-            setError('الجهاز لا يدعم تحديد الموقع');
-            setLoading(false);
+            fetchIpLocation();
             return;
         }
 
@@ -69,10 +73,10 @@ export const useLocation = () => {
                 handlePositionSuccess(position.coords.latitude, position.coords.longitude, 'HIGH_ACCURACY_GPS');
             },
             (err) => {
-                console.warn('GPS Denied/Failed, using fallback:', err.message);
+                console.warn('GPS failed, trying IP fallback:', err.message);
                 fetchIpLocation();
             },
-            { timeout: 10000, enableHighAccuracy: true }
+            { timeout: 7000, enableHighAccuracy: true }
         );
     };
 
